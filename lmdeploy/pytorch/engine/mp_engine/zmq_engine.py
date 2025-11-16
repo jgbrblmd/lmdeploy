@@ -80,6 +80,34 @@ class ZMQMPEngine(MPEngine):
 
         logger.setLevel(log_level)
 
+        # Initialize PyTorch/CUDA/HIP in subprocess for ROCm compatibility
+        try:
+            import torch
+            # Check if we're on ROCm
+            is_rocm = hasattr(torch.version, 'hip') and torch.version.hip is not None
+            if is_rocm:
+                # On ROCm, ensure CUDA/HIP is properly initialized in subprocess
+                if torch.cuda.is_available():
+                    # Set device explicitly to ensure proper initialization
+                    torch.cuda.set_device(0)
+                    # Test device access by creating a small tensor
+                    # This helps ensure the device is properly initialized
+                    try:
+                        test_tensor = torch.zeros(1, device='cuda')
+                        logger.debug('ROCm device initialized and tested in subprocess')
+                    except RuntimeError as e:
+                        error_str = str(e)
+                        if 'HIP error' in error_str or 'invalid device function' in error_str:
+                            logger.error(
+                                f'ROCm device initialization failed in subprocess: {error_str}\n'
+                                'This may indicate that PyTorch was not compiled for your GPU architecture.\n'
+                                'Try setting HSA_OVERRIDE_GFX_VERSION=9.0.6 environment variable.'
+                            )
+                            raise
+                        raise
+        except Exception as e:
+            logger.warning(f'Failed to initialize device in subprocess: {e}')
+
         # create an async rpc server
         server = AsyncRPCServer()
         with condition:

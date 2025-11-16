@@ -25,10 +25,23 @@ class EngineChecker(BaseChecker):
         dtype = engine_config.dtype
         device_type = engine_config.device_type
 
-        # pytorch
-        torch_checker = TorchChecker(logger=logger)
+        # Detect if we're actually on ROCm (even if device_type is 'cuda')
+        is_rocm = False
+        try:
+            import torch
+            is_rocm = hasattr(torch.version, 'hip') and torch.version.hip is not None
+        except ImportError:
+            pass
 
-        if device_type == 'cuda':
+        # pytorch
+        # For ROCm devices, PyTorch still uses 'cuda' as device name
+        # but we need to pass the actual device type for proper initialization
+        torch_device = 'cuda' if device_type in ['cuda', 'rocm'] else device_type
+        torch_checker = TorchChecker(device=torch_device, logger=logger)
+
+        # On ROCm, skip Triton checks as Triton may not support ROCm properly
+        # Also, if device_type is explicitly 'rocm', use deeplink path
+        if device_type == 'cuda' and not is_rocm:
             # triton
             from ..check_env.cuda import CudaChecker
             from ..check_env.triton import TritonChecker
@@ -38,10 +51,13 @@ class EngineChecker(BaseChecker):
             triton_checker.register_required_checker(cuda_checker)
             self.register_required_checker(triton_checker)
         else:
-            # deeplink
-            from ..check_env.deeplink import DeeplinkChecker
-            dl_checker = DeeplinkChecker(device_type, logger=logger)
-            self.register_required_checker(dl_checker)
+            # For ROCm or other device types, use deeplink path or just torch
+            if device_type != 'cuda':
+                # deeplink
+                from ..check_env.deeplink import DeeplinkChecker
+                dl_checker = DeeplinkChecker(device_type, logger=logger)
+                self.register_required_checker(dl_checker)
+            # Always register torch_checker
             self.register_required_checker(torch_checker)
 
         # transformers
@@ -109,7 +125,17 @@ class EngineChecker(BaseChecker):
             return
 
         current_proc = mp.current_process()
-        if not current_proc.daemon and self.engine_config.device_type == 'cuda':
+        # For ROCm devices, PyTorch uses 'cuda' as device name but we should handle it differently
+        # Check if we're on ROCm by checking if HIP is available
+        is_rocm = False
+        try:
+            import torch
+            is_rocm = hasattr(torch.version, 'hip') and torch.version.hip is not None
+        except ImportError:
+            pass
+        
+        # Only use subprocess for CUDA (not ROCm) to avoid initialization issues
+        if not current_proc.daemon and self.engine_config.device_type == 'cuda' and not is_rocm:
             mp_ctx = mp.get_context('spawn')
             with ProcessPoolExecutor(mp_context=mp_ctx) as executor:
                 try:
