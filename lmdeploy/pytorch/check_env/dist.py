@@ -41,7 +41,7 @@ class DistChecker(BaseChecker):
                               f'Get distributed_executor_backend={distributed_executor_backend}.')
 
         if self.ep > 1:
-            if self.device_type == 'cuda' and not is_dlblas_installed():
+            if self.device_type in ['cuda', 'rocm'] and not is_dlblas_installed():
                 self.log_and_exit(mod_name='Dist',
                                   message='ep>1 requires install dlblas(https://github.com/DeepLink-org/dlBLAS).')
             if self.ep % self.dp != 0:

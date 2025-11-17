@@ -203,6 +203,15 @@ class CudaOpsBackend(DefaultOpsBackend):
         return torch.cuda.device_count()
 
     @staticmethod
+    def ccl_backend() -> str:
+        """Get CCL backend for distributed training."""
+        # Check if we're on ROCm (AMD GPUs)
+        is_rocm = hasattr(torch.version, 'hip') and torch.version.hip is not None
+        if is_rocm:
+            return 'gloo'  # Use gloo backend for ROCm devices
+        return 'nccl'
+
+    @staticmethod
     def support_ray():
         """Support ray."""
         return True

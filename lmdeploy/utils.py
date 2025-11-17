@@ -367,17 +367,27 @@ def get_max_batch_size(device_type: str):
     Args:
         device_type (str): the type of device
     """
-    assert device_type in ['cuda', 'ascend', 'maca', 'camb']
-    if device_type == 'cuda':
+    assert device_type in ['cuda', 'rocm', 'ascend', 'maca', 'camb']
+    if device_type in ['cuda', 'rocm']:
         max_batch_size_map = {'a100': 384, 'a800': 384, 'h100': 1024, 'h800': 1024, 'l20y': 1024, 'h200': 1024}
         import torch
-        device_name = torch.cuda.get_device_name(0).lower()
-        for name, size in max_batch_size_map.items():
-            if name in device_name:
-                return size
-        # for devices that are not in `max_batch_size_map`, set
-        # the max_batch_size 128
-        return 128
+        try:
+            # Handle ROCm devices - use cuda interface for HIP devices
+            if hasattr(torch.version, 'hip') and torch.version.hip is not None:
+                # On ROCm, check if HIP is available
+                if not torch.cuda.is_available():
+                    get_logger('lmdeploy').warning('HIP GPUs are not available, using default batch size')
+                    return 256
+            device_name = torch.cuda.get_device_name(0).lower()
+            for name, size in max_batch_size_map.items():
+                if name in device_name:
+                    return size
+            # for devices that are not in `max_batch_size_map`, set
+            # the max_batch_size 128
+            return 128
+        except RuntimeError as e:
+            get_logger('lmdeploy').warning(f'Failed to get device name: {e}, using default batch size')
+            return 256
     elif device_type == 'ascend':
         return 256
     elif device_type == 'maca':

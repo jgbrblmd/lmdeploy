@@ -82,4 +82,9 @@ class DefaultOpsBackend(OpsBackend):
 
     @staticmethod
     def ccl_backend() -> str:
+        import torch
+        # Check if we're on ROCm (AMD GPUs)
+        is_rocm = hasattr(torch.version, 'hip') and torch.version.hip is not None
+        if is_rocm:
+            return 'gloo'  # Use gloo backend for ROCm devices
         return 'nccl'

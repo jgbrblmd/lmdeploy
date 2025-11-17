@@ -310,7 +310,7 @@ class PytorchEngineConfig:
         max_prefill_token_num (int): tokens per iteration.
         thread_safe (bool): thread safe engine instance.
         enable_prefix_caching (bool): Enable token match and sharing caches.
-        device_type (str): The inference device type, options ['cuda']
+        device_type (str): The inference device type, options ['cuda', 'rocm']
         eager_mode (bool): Enable "eager" mode or not
         custom_module_map (Dict): nn module map customized by users. Once
             provided, the original nn modules of the model will be
@@ -411,12 +411,12 @@ class PytorchEngineConfig:
             'invalid max_prefill_token_num'
         assert self.num_gpu_blocks >= 0, 'invalid num_gpu_blocks'
         assert self.quant_policy in (0, 4, 8), 'invalid quant_policy'
-        assert self.device_type in ['cuda', 'ascend', 'maca', 'camb'], (f'invalid device_type: {self.device_type}')
+        assert self.device_type in ['cuda', 'rocm', 'ascend', 'maca', 'camb'], (f'invalid device_type: {self.device_type}')
         assert self.block_size >= 16 and (self.block_size & (self.block_size - 1)) == 0, \
             f'block_size must be >= 16 and a power of 2, but got {self.block_size}'
-        if self.quant_policy > 0 and self.device_type not in ['cuda', 'ascend']:
+        if self.quant_policy > 0 and self.device_type not in ['cuda', 'rocm', 'ascend']:
             assert False, \
-                   'kv cache quantization only works for CUDA and ASCEND.'
+                   'kv cache quantization only works for CUDA, ROCm and ASCEND.'
         if self.device_type == 'camb' and self.block_size != 16:
             self.block_size = 16
             logger.warning('Currently, camb device requires block size to be 16, \

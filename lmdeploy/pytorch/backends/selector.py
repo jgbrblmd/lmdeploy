@@ -12,6 +12,9 @@ def _get_backend():
     if device_type == 'cuda':
         from .cuda import CudaOpsBackend
         return CudaOpsBackend
+    if device_type == 'rocm':
+        from .cuda import CudaOpsBackend
+        return CudaOpsBackend
     if device_type == 'ascend':
         from .dlinfer.ascend import AscendOpsBackend
         return AscendOpsBackend

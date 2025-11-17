@@ -182,7 +182,15 @@ class RayWorkerWrapper(WorkerWrapperBase):
 
     def set_device(self, local_rank):
         """Set worker local rank."""
-        torch.cuda.set_device(local_rank)
+        # Handle ROCm devices - use cuda interface for HIP devices
+        if hasattr(torch.version, 'hip') and torch.version.hip is not None:
+            # On ROCm, torch uses cuda interface for HIP devices
+            if torch.cuda.is_available():
+                torch.cuda.set_device(local_rank)
+            else:
+                logger.warning(f'HIP GPU {local_rank} is not available, skipping device setting')
+        else:
+            torch.cuda.set_device(local_rank)
 
     def set_env(self, envs: Dict[str, str]):
         for key, value in envs.items():
@@ -201,7 +209,14 @@ class RayWorkerWrapper(WorkerWrapperBase):
         from lmdeploy.pytorch.distributed import all_reduce, get_dist_manager
         with get_dist_manager().context(self.dist_ctx):
             group = self.dist_ctx.tp_group.gpu_group
-            tmp = torch.empty((1, ), device='cuda')
+            # Handle ROCm devices - use 'cuda' device name but check for HIP availability
+            device = 'cuda'
+            if hasattr(torch.version, 'hip') and torch.version.hip is not None:
+                # On ROCm, torch uses 'cuda' as device name but we need to ensure HIP is available
+                if not torch.cuda.is_available():
+                    logger.warning('HIP GPUs are not available, skipping distributed warmup')
+                    return
+            tmp = torch.empty((1, ), device=device)
             all_reduce(tmp, group=group)
 
     def pack_output(self, output: Dict):
@@ -509,7 +524,7 @@ class RayExecutor(ExecutorBase):
 
     def _init_workers_ray(self, placement_group: PlacementGroup, worker_kwargs: dict):
         """Init worker ray."""
-        device_str = get_device_str()
+        device_str = get_device_str(self.device_type)
         bundle_indices = []
         for bundle_id, bundle in enumerate(placement_group.bundle_specs):
             if bundle.get(device_str, 0) and self._valid_bundle_id(bundle_id):
@@ -549,7 +564,7 @@ class RayExecutor(ExecutorBase):
     def _init_distributed_environment_by_device(self, device_str: str):
         """Init distributed environment."""
         driver_ip = _get_master_addr()
-        if device_str in ['cuda', 'maca']:
+        if device_str in ['cuda', 'rocm', 'maca']:
             self.workers = self._sort_workers(driver_ip, self.workers)
 
         elif device_str == 'ascend':
